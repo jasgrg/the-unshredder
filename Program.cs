@@ -8,7 +8,7 @@ namespace imgUnshred
 {
    class Program
    {
-       private const double COLOR_DIFF_THRESHOLD = 5d;
+       private static IEvaluator evaluator;
 
       static void Main(string[] args)
       {
@@ -17,6 +17,7 @@ namespace imgUnshred
             Console.WriteLine("Usage: imgUnshred <image_file_name>");
             return;
          }
+         evaluator = new EudlideanDistanceLab ();
 
          var file_name = args[0];
          if (!System.IO.File.Exists(file_name))
@@ -67,7 +68,7 @@ namespace imgUnshred
           {
               Color pixelLeft = left.GetPixel(left.Width - 1, i);
               Color pixelRight = right.GetPixel(0, i);
-              if (GetDistance(pixelLeft, pixelRight) < COLOR_DIFF_THRESHOLD) score++;
+              score += evaluator.Evaluate(pixelLeft, pixelRight); 
           }
           return score ;
       }
@@ -100,66 +101,7 @@ namespace imgUnshred
             list.RemoveAt(right);
        }
 
-       private static double GetDistance(Color c1, Color c2)
-       {
-           LAB lab1 = RGBToLAB(c1);
-           LAB lab2 = RGBToLAB(c2);
-           return Math.Sqrt(Math.Pow(lab1.L - lab2.L, 2) +
-                            Math.Pow(lab1.a - lab2.a, 2) +
-                            Math.Pow(lab1.b - lab2.b, 2));
-       }
-
-       private static LAB RGBToLAB(Color c)
-       {
-           return XYZToLAB(RGBToXYZ(c));
-       }
-
-       private static XYZ RGBToXYZ(Color color)
-       {
-           double alpha = 0.055d;
-           double r = color.R/255d;
-           double g = color.G/255d;
-           double b = color.B/255d;
-
-           double Rlinear = (r <= 0.04045d) ? r/12.92d : Math.Pow((r + alpha)/(1d + alpha), 2.4d);
-           double Glinear = (g <= 0.04045d) ? g / 12.92d : Math.Pow((g + alpha) / (1d + alpha), 2.4d);
-           double Blinear = (b <= 0.04045d) ? b / 12.92d : Math.Pow((b + alpha) / (1d + alpha), 2.4d);
-
-           Rlinear *= 100d;
-           Glinear *= 100d;
-           Blinear *= 100d;
-           
-           XYZ xyz = new XYZ();
-           xyz.x = (.4124d*Rlinear) + (.3576d*Glinear) + (.1805d*Blinear);
-           xyz.y = (.2126d*Rlinear) + (.7152d*Glinear) + (.0722d*Blinear);
-           xyz.z = (.0193d*Rlinear) + (.1192d*Glinear) + (.9505d*Blinear);
-           return xyz;
-
-       }
-
-       private static LAB XYZToLAB(XYZ xyz)
-       {
-           double whiteX = 95.047d;
-           double whiteY = 100.000d;
-           double whiteZ = 108.883d;
-
-           double x = xyz.x/whiteX;
-           double y = xyz.y/whiteY;
-           double z = xyz.z/whiteZ;
-
-           // (6/29)^3 = 0.008856
-
-           x = (x > 0.008856d) ? Math.Pow(x, 1d/3d) : (7.787037d*x) + (4d/29d);
-           y = (y > 0.008856d) ? Math.Pow(y, 1d/3d) : (7.787037d*y) + (4d/29d);
-           z = (z > 0.008856d) ? Math.Pow(z, 1d/3d) : (7.787037d*z) + (4d/29d);
-
-           LAB lab = new LAB();
-           lab.L = 116d*y - 16d;
-           lab.a = 500d*(x - y);
-           lab.b = 200d*(y - z);
-           return lab;
-       }
-
+ 
        private struct LAB
        {
            public double L;
@@ -172,6 +114,99 @@ namespace imgUnshred
            public double y;
            public double z;
        }
+
+       private interface IEvaluator
+       {
+           double Evaluate(Color c1, Color c2);
+       }
+
+       private class EudlideanDistanceLab : IEvaluator
+       {
+           public double Evaluate(Color c1, Color c2)
+           {
+               LAB lab1 = RGBToLAB(c1);
+               LAB lab2 = RGBToLAB(c2);
+               var distance = Math.Sqrt(Math.Pow(lab1.L - lab2.L, 2) +
+                                Math.Pow(lab1.a - lab2.a, 2) +
+                                Math.Pow(lab1.b - lab2.b, 2));
+               if (distance == 0)
+                   return 1;
+               return 1 / distance;
+           }
+
+           private static LAB RGBToLAB(Color c)
+           {
+               return XYZToLAB(RGBToXYZ(c));
+           }
+
+           private static XYZ RGBToXYZ(Color color)
+           {
+               double alpha = 0.055d;
+               double r = color.R / 255d;
+               double g = color.G / 255d;
+               double b = color.B / 255d;
+
+               double Rlinear = (r <= 0.04045d) ? r / 12.92d : Math.Pow((r + alpha) / (1d + alpha), 2.4d);
+               double Glinear = (g <= 0.04045d) ? g / 12.92d : Math.Pow((g + alpha) / (1d + alpha), 2.4d);
+               double Blinear = (b <= 0.04045d) ? b / 12.92d : Math.Pow((b + alpha) / (1d + alpha), 2.4d);
+
+               Rlinear *= 100d;
+               Glinear *= 100d;
+               Blinear *= 100d;
+
+               XYZ xyz = new XYZ();
+               xyz.x = (.4124d * Rlinear) + (.3576d * Glinear) + (.1805d * Blinear);
+               xyz.y = (.2126d * Rlinear) + (.7152d * Glinear) + (.0722d * Blinear);
+               xyz.z = (.0193d * Rlinear) + (.1192d * Glinear) + (.9505d * Blinear);
+               return xyz;
+
+           }
+
+           private static LAB XYZToLAB(XYZ xyz)
+           {
+               double whiteX = 95.047d;
+               double whiteY = 100.000d;
+               double whiteZ = 108.883d;
+
+               double x = xyz.x / whiteX;
+               double y = xyz.y / whiteY;
+               double z = xyz.z / whiteZ;
+
+               // (6/29)^3 = 0.008856
+
+               x = (x > 0.008856d) ? Math.Pow(x, 1d / 3d) : (7.787037d * x) + (4d / 29d);
+               y = (y > 0.008856d) ? Math.Pow(y, 1d / 3d) : (7.787037d * y) + (4d / 29d);
+               z = (z > 0.008856d) ? Math.Pow(z, 1d / 3d) : (7.787037d * z) + (4d / 29d);
+
+               LAB lab = new LAB();
+               lab.L = 116d * y - 16d;
+               lab.a = 500d * (x - y);
+               lab.b = 200d * (y - z);
+               return lab;
+           }
+
+       }
+
+       private class EuclideanDistance : IEvaluator
+       {
+           public double Evaluate(Color c1, Color c2)
+           {
+               var distance = (Math.Sqrt(Math.Pow(c1.R - c2.R, 2) +
+                                    Math.Pow(c1.G - c2.R, 2) +
+                                    Math.Pow(c1.B - c2.B, 2)));
+               if(distance == 0){return 1;}
+               return 1 / distance;                    
+           }
+       }
+
+        private class ExactMatch : IEvaluator
+        {
+            public double Evaluate(Color c1, Color c2)
+            {
+                if (c1.Equals(c2)) { return 1;  }
+                return 0;
+            }
+        }
    }
 
 }
